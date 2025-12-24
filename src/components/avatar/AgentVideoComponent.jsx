@@ -5,7 +5,6 @@ import {
   RoomAudioRenderer,
   useTracks,
   RoomContext,
-  useRoom,
 } from '@livekit/components-react';
 import { Room, Track, ConnectionState, RoomEvent, DataPacket_Kind } from 'livekit-client';
 import '@livekit/components-styles';
@@ -59,6 +58,8 @@ const AgentVideoComponent = () => {
   const [evaluationResult, setEvaluationResult] = useState(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [showEvaluation, setShowEvaluation] = useState(false);
+  const [isEvaluationProcessing, setIsEvaluationProcessing] = useState(false);
+  const [evaluationCompleted, setEvaluationCompleted] = useState(false);
   const transcriptRef = useRef([]);
   const roomInfoRef = useRef({ room: null });
 
@@ -166,6 +167,8 @@ const AgentVideoComponent = () => {
     setError(null);
     setEvaluationResult(null);
     setShowEvaluation(false);
+    setIsEvaluationProcessing(false);
+    setEvaluationCompleted(false);
     transcriptRef.current = [];
     setConversationTranscript([]);
     try {
@@ -212,6 +215,9 @@ const AgentVideoComponent = () => {
             if (mounted) {
               console.log('Disconnected:', reason);
               
+              // Set evaluation processing state
+              setIsEvaluationProcessing(true);
+              
               // Try to process evaluation from most recent transcript file
               try {
                 console.log('Processing evaluation from most recent transcript file...');
@@ -238,7 +244,8 @@ const AgentVideoComponent = () => {
                 
                 if (evaluation) {
                   setEvaluationResult(evaluation);
-                  setShowEvaluation(true);
+                  setIsEvaluationProcessing(false);
+                  setEvaluationCompleted(true);
                   return; // Exit early if we got evaluation
                 } else {
                   // Fallback: try with transcript if available
@@ -248,10 +255,12 @@ const AgentVideoComponent = () => {
                       const evalResult = await evaluateConversation(transcriptRef.current);
                       if (evalResult) {
                         setEvaluationResult(evalResult);
-                        setShowEvaluation(true);
+                        setIsEvaluationProcessing(false);
+                        setEvaluationCompleted(true);
                       } else {
                         setEvaluationResult('Evaluation completed but no results were returned.');
-                        setShowEvaluation(true);
+                        setIsEvaluationProcessing(false);
+                        setEvaluationCompleted(true);
                       }
                     } catch (evalError) {
                       console.error('Error evaluating with transcript:', evalError);
@@ -259,11 +268,13 @@ const AgentVideoComponent = () => {
                                      evalError.message || 
                                      'Failed to evaluate conversation';
                       setEvaluationResult(`Error: ${errorMsg}`);
-                      setShowEvaluation(true);
+                      setIsEvaluationProcessing(false);
+                      setEvaluationCompleted(true);
                     }
                   } else {
                     setEvaluationResult('No conversation transcript available. Please wait for the conversation to complete.');
-                    setShowEvaluation(true);
+                    setIsEvaluationProcessing(false);
+                    setEvaluationCompleted(true);
                   }
                 }
               } catch (fetchError) {
@@ -274,10 +285,12 @@ const AgentVideoComponent = () => {
                     const evalResult = await evaluateConversation(transcriptRef.current);
                     if (evalResult) {
                       setEvaluationResult(evalResult);
-                      setShowEvaluation(true);
+                      setIsEvaluationProcessing(false);
+                      setEvaluationCompleted(true);
                     } else {
                       setEvaluationResult('Evaluation completed but no results were returned.');
-                      setShowEvaluation(true);
+                      setIsEvaluationProcessing(false);
+                      setEvaluationCompleted(true);
                     }
                   } catch (evalError) {
                     console.error('Error evaluating with transcript:', evalError);
@@ -285,14 +298,16 @@ const AgentVideoComponent = () => {
                                    evalError.message || 
                                    'Failed to evaluate conversation';
                     setEvaluationResult(`Error: ${errorMsg}`);
-                    setShowEvaluation(true);
+                    setIsEvaluationProcessing(false);
+                    setEvaluationCompleted(true);
                   }
                 } else {
                   const errorMsg = fetchError.response?.data?.detail || 
                                  fetchError.message || 
                                  'Failed to process evaluation';
                   setEvaluationResult(`Error: ${errorMsg}\n\nNo conversation transcript available.`);
-                  setShowEvaluation(true);
+                  setIsEvaluationProcessing(false);
+                  setEvaluationCompleted(true);
                 }
               }
               
@@ -412,7 +427,7 @@ const AgentVideoComponent = () => {
         transcript={conversationTranscript}
         onClose={() => {
           setShowEvaluation(false);
-          setIsDisconnected(true);
+          // Don't set disconnected, keep evaluation completed state
         }}
       />
     );
@@ -431,8 +446,71 @@ const AgentVideoComponent = () => {
     );
   }
 
+  // Show evaluation processing state
+  if (isEvaluationProcessing && !showEvaluation) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+        <div className="text-white text-center p-8 max-w-md">
+          <div className="relative w-20 h-20 mx-auto mb-6">
+            <div className="absolute inset-0 border-4 border-blue-500/30 rounded-full"></div>
+            <div className="absolute inset-0 border-4 border-transparent border-t-blue-500 rounded-full animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+          </div>
+          <p className="text-3xl mb-3 font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            Processing Evaluation
+          </p>
+          <p className="text-lg mb-2 text-gray-300">
+            Analyzing your conversation...
+          </p>
+          <p className="text-sm text-gray-400">
+            This may take a few moments
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show evaluation completed, ready to start
+  if (evaluationCompleted && !showEvaluation && !isEvaluationProcessing) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+        <div className="text-white text-center p-8 max-w-md">
+          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center shadow-2xl">
+            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <p className="text-3xl mb-3 font-bold bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+            Evaluation Complete
+          </p>
+          <p className="text-lg mb-6 text-gray-300">
+            Your performance has been analyzed
+          </p>
+          <button
+            onClick={() => {
+              setShowEvaluation(true);
+            }}
+            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-8 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 mb-4"
+          >
+            View Evaluation Report
+          </button>
+          <button
+            onClick={handleReconnect}
+            className="block w-full text-gray-400 hover:text-white transition-colors duration-200 text-sm"
+          >
+            Start New Session
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Show friendly disconnect message or error
-  if (isDisconnected && !error) {
+  if (isDisconnected && !error && !isEvaluationProcessing && !evaluationCompleted) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-900">
         <div className="text-white text-center p-8 max-w-md">
@@ -480,12 +558,15 @@ const AgentVideoComponent = () => {
         <CustomControlBar 
           room={room} 
           onLeave={async () => {
-            // Get current transcript and room name
+            // Get current transcript
             const currentTranscript = transcriptRef.current;
-            const roomName = roomInfoRef.current.room;
             
             // Disconnect from room first
             room.disconnect();
+            
+            // Set evaluation processing state
+            setIsEvaluationProcessing(true);
+            setIsDisconnected(false);
             
             // Try to process evaluation from most recent transcript file
             try {
@@ -513,7 +594,8 @@ const AgentVideoComponent = () => {
               
               if (evaluation) {
                 setEvaluationResult(evaluation);
-                setShowEvaluation(true);
+                setIsEvaluationProcessing(false);
+                setEvaluationCompleted(true);
                 return;
               } else {
                 // Evaluation not found, try with transcript
@@ -530,10 +612,12 @@ const AgentVideoComponent = () => {
                 const evaluation = await evaluateConversation(currentTranscript);
                 if (evaluation) {
                   setEvaluationResult(evaluation);
-                  setShowEvaluation(true);
+                  setIsEvaluationProcessing(false);
+                  setEvaluationCompleted(true);
                 } else {
                   setEvaluationResult('Evaluation completed but no results were returned.');
-                  setShowEvaluation(true);
+                  setIsEvaluationProcessing(false);
+                  setEvaluationCompleted(true);
                 }
               } catch (evalError) {
                 console.error('Error evaluating conversation:', evalError);
@@ -542,12 +626,14 @@ const AgentVideoComponent = () => {
                                evalError.message || 
                                'Failed to evaluate conversation';
                 setEvaluationResult(`Error: ${errorMsg}`);
-                setShowEvaluation(true);
+                setIsEvaluationProcessing(false);
+                setEvaluationCompleted(true);
               }
             } else {
               // No transcript and no evaluation found
               setEvaluationResult('No conversation transcript available for evaluation. Please wait for the conversation to complete.');
-              setShowEvaluation(true);
+              setIsEvaluationProcessing(false);
+              setEvaluationCompleted(true);
             }
           }}
         />
@@ -559,6 +645,171 @@ const AgentVideoComponent = () => {
 // Evaluation Modal Component
 const EvaluationModal = ({ evaluation, transcript, onClose }) => {
   const [copied, setCopied] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+
+  // Animation on mount
+  useEffect(() => {
+    setIsVisible(true);
+  }, []);
+
+
+  // Render markdown table as HTML
+  const renderMarkdownTable = (tableText) => {
+    const rows = tableText.split('\n').filter(line => 
+      line.trim().includes('|') && !line.trim().match(/^\|[\s-:]+\|$/)
+    );
+    
+    if (rows.length === 0) return null;
+
+    const parsedRows = rows.map(row => {
+      return row.split('|')
+        .map(cell => cell.trim())
+        .filter(cell => cell.length > 0);
+    });
+
+    return (
+      <div className="overflow-x-auto my-4">
+        <table className="w-full border-collapse bg-slate-800/50 rounded-lg overflow-hidden">
+          <thead>
+            {parsedRows[0] && (
+              <tr className="bg-gradient-to-r from-blue-600/20 to-purple-600/20">
+                {parsedRows[0].map((header, idx) => (
+                  <th 
+                    key={`header-${idx}`}
+                    className="px-4 py-3 text-left text-sm font-semibold text-blue-300 border-b border-slate-700/50"
+                  >
+                    {header.replaceAll('**', '')}
+                  </th>
+                ))}
+              </tr>
+            )}
+          </thead>
+          <tbody>
+            {parsedRows.slice(1).map((row, rowIdx) => (
+              <tr 
+                key={rowIdx}
+                className="border-b border-slate-700/30 hover:bg-slate-700/20 transition-colors"
+              >
+                {row.map((cell, cellIdx) => {
+                  // Check if cell contains bold text
+                  const isBold = cell.includes('**');
+                  const cellText = cell.replaceAll('**', '');
+                  const isNumber = cellIdx === 2 && /^\d+$/.test(cellText.trim());
+                  
+                  return (
+                    <td 
+                      key={`cell-${rowIdx}-${cellIdx}`}
+                      className={`px-4 py-3 text-sm text-gray-200 ${
+                        isBold ? 'font-bold text-blue-300' : ''
+                      } ${isNumber ? 'text-center' : ''}`}
+                    >
+                      {cellText}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  // Render markdown content
+  const renderMarkdownContent = (text) => {
+    if (!text) return null;
+
+    // Split by double newlines to get sections
+    const sections = text.split(/\n\n+/);
+    const elements = [];
+
+    sections.forEach((section, sectionIdx) => {
+      const trimmedSection = section.trim();
+      if (!trimmedSection) return;
+
+      // Check if it's a heading
+      if (trimmedSection.match(/^#{1,6}\s+/)) {
+        const match = trimmedSection.match(/^(#{1,6})/);
+        if (match) {
+          const level = match[1].length;
+          const text = trimmedSection.replace(/^#{1,6}\s+/, '');
+          elements.push(
+            <div key={`heading-${sectionIdx}`} className="mt-6 mb-4">
+              {level === 1 && (
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                  {text}
+                </h1>
+              )}
+              {level === 2 && (
+                <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent flex items-center gap-3">
+                  <div className="w-1 h-8 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full"></div>
+                  {text}
+                </h2>
+              )}
+              {level >= 3 && (
+                <h3 className="text-xl font-semibold text-gray-300 mt-4 mb-2">
+                  {text}
+                </h3>
+              )}
+            </div>
+          );
+        }
+      }
+      // Check if it's a table
+      else if (trimmedSection.includes('|') && trimmedSection.split('\n').some(line => line.includes('|'))) {
+        elements.push(
+          <div key={`table-${sectionIdx}`}>
+            {renderMarkdownTable(trimmedSection)}
+          </div>
+        );
+      }
+      // Check if it's a numbered list
+      else if (trimmedSection.match(/^\d+\.\s+/)) {
+        const items = trimmedSection.split(/\n(?=\d+\.\s+)/);
+        elements.push(
+          <ul key={`list-${sectionIdx}`} className="list-decimal list-inside space-y-2 my-4 ml-4">
+            {items.map((item, itemIdx) => {
+              const text = item.replace(/^\d+\.\s+/, '').trim();
+              // Check for bold text
+              const parts = text.split(/(\*\*.*?\*\*)/g);
+              return (
+                <li key={`list-item-${sectionIdx}-${itemIdx}`} className="text-gray-200 leading-relaxed">
+                  {parts.map((part, partIdx) => {
+                    if (part.startsWith('**') && part.endsWith('**')) {
+                      return <strong key={`part-${itemIdx}-${partIdx}`} className="text-blue-300 font-semibold">{part.slice(2, -2)}</strong>;
+                    }
+                    return <span key={`part-${itemIdx}-${partIdx}`}>{part}</span>;
+                  })}
+                </li>
+              );
+            })}
+          </ul>
+        );
+      }
+      // Regular paragraph
+      else {
+        const lines = trimmedSection.split('\n');
+        lines.forEach((line, lineIdx) => {
+          if (line.trim()) {
+            // Check for bold text
+            const parts = line.split(/(\*\*.*?\*\*)/g);
+            elements.push(
+              <p key={`para-${sectionIdx}-${lineIdx}`} className="text-gray-200 leading-relaxed mb-3">
+                {parts.map((part, partIdx) => {
+                  if (part.startsWith('**') && part.endsWith('**')) {
+                    return <strong key={`para-part-${lineIdx}-${partIdx}`} className="text-blue-300 font-semibold">{part.slice(2, -2)}</strong>;
+                  }
+                  return <span key={`para-part-${lineIdx}-${partIdx}`}>{part}</span>;
+                })}
+              </p>
+            );
+          }
+        });
+      }
+    });
+
+    return <div className="space-y-2">{elements}</div>;
+  };
 
   // Helper function to extract evaluation text for copying
   const getEvaluationText = () => {
@@ -614,17 +865,135 @@ const EvaluationModal = ({ evaluation, transcript, onClose }) => {
       } catch (fallbackErr) {
         console.error('Fallback copy failed:', fallbackErr);
       }
-      document.body.removeChild(textArea);
+      textArea.remove();
+    }
+  };
+
+  // Helper function to get score icon with proper colors and sizes
+  const getScoreIcon = (percentage, size = 'md', customColor = null) => {
+    const sizeClasses = {
+      sm: 'w-4 h-4',
+      md: 'w-6 h-6',
+      lg: 'w-8 h-8',
+      xl: 'w-10 h-10'
+    };
+    
+    const sizeClass = sizeClasses[size] || sizeClasses.md;
+    
+    // Determine icon color based on percentage if custom color not provided
+    let iconColor = customColor;
+    if (!iconColor) {
+      if (percentage >= 80) {
+        iconColor = 'text-emerald-400';
+      } else if (percentage >= 70) {
+        iconColor = 'text-blue-400';
+      } else if (percentage >= 50) {
+        iconColor = 'text-yellow-400';
+      } else {
+        iconColor = 'text-red-400';
+      }
+    }
+    
+    if (percentage >= 80) {
+      return (
+        <svg 
+          className={`${sizeClass} ${iconColor} flex-shrink-0`} 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path 
+            strokeLinecap="round" 
+            strokeLinejoin="round" 
+            strokeWidth={2.5} 
+            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" 
+          />
+        </svg>
+      );
+    } else if (percentage >= 70) {
+      return (
+        <svg 
+          className={`${sizeClass} ${iconColor} flex-shrink-0`} 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path 
+            strokeLinecap="round" 
+            strokeLinejoin="round" 
+            strokeWidth={2.5} 
+            d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" 
+          />
+        </svg>
+      );
+    } else if (percentage >= 50) {
+      return (
+        <svg 
+          className={`${sizeClass} ${iconColor} flex-shrink-0`} 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path 
+            strokeLinecap="round" 
+            strokeLinejoin="round" 
+            strokeWidth={2.5} 
+            d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+          />
+        </svg>
+      );
+    } else {
+      return (
+        <svg 
+          className={`${sizeClass} ${iconColor} flex-shrink-0`} 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path 
+            strokeLinecap="round" 
+            strokeLinejoin="round" 
+            strokeWidth={2.5} 
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" 
+          />
+        </svg>
+      );
     }
   };
 
   // Helper function to render evaluation content
   const renderEvaluationContent = () => {
     if (typeof evaluation === 'string') {
+      // Check if it contains markdown tables
+      const hasTables = evaluation.includes('|') && evaluation.split('\n').some(line => line.includes('|'));
+      
       return (
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-6 border border-gray-700 shadow-xl">
-          <div className="whitespace-pre-wrap text-gray-100 leading-relaxed text-base font-normal">
-            {evaluation}
+        <div className="bg-gradient-to-br from-slate-800/90 via-slate-800/80 to-slate-900/90 rounded-2xl p-8 border border-slate-700/50 shadow-2xl backdrop-blur-sm relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 pointer-events-none"></div>
+          <div className="relative z-10">
+            {hasTables ? (
+              <div className="space-y-6">
+                {renderMarkdownContent(evaluation)}
+              </div>
+            ) : (
+              <div className="flex items-start gap-4 mb-4">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center border border-blue-500/30 flex-shrink-0 shadow-lg">
+                  <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-white mb-4">Evaluation Summary</h3>
+                  <div className="whitespace-pre-wrap text-gray-200 leading-relaxed text-base font-normal">
+                    {evaluation}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       );
@@ -637,45 +1006,110 @@ const EvaluationModal = ({ evaluation, transcript, onClose }) => {
       // If there are scores, display them nicely
       if (evaluation.scores || evaluation.score) {
         const scores = evaluation.scores || (evaluation.score ? { Overall: evaluation.score } : {});
+        const scoreEntries = Object.entries(scores);
+        const overallScore = scoreEntries.length > 0 ? (typeof scoreEntries[0][1] === 'number' ? scoreEntries[0][1] : parseFloat(scoreEntries[0][1])) : null;
+        
         return (
-          <div className="space-y-6">
+          <div className="space-y-8 animate-fade-in">
+            {/* Overall Score Banner */}
+            {overallScore !== null && (
+              <div className="bg-gradient-to-r from-blue-600/20 via-purple-600/20 to-pink-600/20 rounded-2xl p-6 border border-blue-500/30 relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 animate-pulse"></div>
+                <div className="relative z-10 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-1">Overall Performance</p>
+                    <p className="text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                      {(overallScore * 100).toFixed(1)}%
+                    </p>
+                  </div>
+                  <div className={`w-20 h-20 rounded-full flex items-center justify-center shadow-xl transition-all duration-300 ${
+                    overallScore >= 0.8 ? 'bg-emerald-500/20 border-4 border-emerald-400 ring-4 ring-emerald-400/20' :
+                    overallScore >= 0.6 ? 'bg-yellow-500/20 border-4 border-yellow-400 ring-4 ring-yellow-400/20' :
+                    'bg-red-500/20 border-4 border-red-400 ring-4 ring-red-400/20'
+                  }`}>
+                    <div className="relative">
+                      {getScoreIcon(
+                        overallScore * 100, 
+                        'xl',
+                        overallScore >= 0.8 ? 'text-emerald-400' :
+                        overallScore >= 0.6 ? 'text-yellow-400' :
+                        'text-red-400'
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Scores Section */}
             <div>
-              <h3 className="text-2xl font-bold mb-5 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
-                Evaluation Scores
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {Object.entries(scores).map(([key, value]) => {
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-1 h-8 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full"></div>
+                <h3 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                  Detailed Scores
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {scoreEntries.map(([key, value], index) => {
                   const numValue = typeof value === 'number' ? value : parseFloat(value);
                   const percentage = numValue * 100;
+                  const isExcellent = percentage >= 80;
                   const isGood = percentage >= 70;
                   const isAverage = percentage >= 50 && percentage < 70;
                   
+                  const colorClasses = isExcellent 
+                    ? 'from-emerald-500/20 to-green-500/20 border-emerald-400/40 text-emerald-400'
+                    : isGood 
+                    ? 'from-blue-500/20 to-cyan-500/20 border-blue-400/40 text-blue-400'
+                    : isAverage
+                    ? 'from-yellow-500/20 to-orange-500/20 border-yellow-400/40 text-yellow-400'
+                    : 'from-red-500/20 to-pink-500/20 border-red-400/40 text-red-400';
+                  
+                  const progressColor = isExcellent
+                    ? 'from-emerald-500 to-green-400'
+                    : isGood
+                    ? 'from-blue-500 to-cyan-400'
+                    : isAverage
+                    ? 'from-yellow-500 to-orange-400'
+                    : 'from-red-500 to-pink-400';
+                  
                   return (
                     <div 
-                      key={key} 
-                      className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-5 border border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
+                      key={key}
+                      className={`bg-gradient-to-br ${colorClasses} rounded-2xl p-6 border-2 shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 hover:-translate-y-1 relative overflow-hidden group`}
+                      style={{ animationDelay: `${index * 100}ms` }}
                     >
-                      <div className="text-sm font-medium text-gray-400 mb-2 uppercase tracking-wide">
-                        {key}
-                      </div>
-                      <div className={`text-3xl font-bold ${
-                        isGood ? 'text-green-400' : isAverage ? 'text-yellow-400' : 'text-red-400'
-                      }`}>
-                        {typeof value === 'number' ? `${percentage.toFixed(1)}%` : value}
-                      </div>
-                      {typeof value === 'number' && (
-                        <div className="mt-3 w-full bg-gray-700 rounded-full h-2 overflow-hidden">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              isGood ? 'bg-gradient-to-r from-green-500 to-green-400' : 
-                              isAverage ? 'bg-gradient-to-r from-yellow-500 to-yellow-400' : 
-                              'bg-gradient-to-r from-red-500 to-red-400'
-                            }`}
-                            style={{ width: `${Math.min(percentage, 100)}%` }}
-                          />
+                      <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      <div className="relative z-10">
+                        <div className="flex items-center justify-between mb-4 gap-3">
+                          <div className="text-sm font-semibold text-gray-300 uppercase tracking-wider flex-1 min-w-0">
+                            {key}
+                          </div>
+                          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-slate-700/50 flex items-center justify-center border border-slate-600/50">
+                            {getScoreIcon(
+                              percentage,
+                              'md',
+                              isExcellent ? 'text-emerald-400' :
+                              isGood ? 'text-blue-400' :
+                              isAverage ? 'text-yellow-400' :
+                              'text-red-400'
+                            )}
+                          </div>
                         </div>
-                      )}
+                        <div className={`text-4xl font-bold mb-4 ${colorClasses.split(' ')[2]}`}>
+                          {typeof value === 'number' ? `${percentage.toFixed(1)}%` : value}
+                        </div>
+                        {typeof value === 'number' && (
+                          <div className="relative w-full bg-gray-800/50 rounded-full h-3 overflow-hidden backdrop-blur-sm">
+                            <div 
+                              className={`h-full rounded-full bg-gradient-to-r ${progressColor} transition-all duration-1000 ease-out shadow-lg`}
+                              style={{ width: `${Math.min(percentage, 100)}%` }}
+                            >
+                              <div className="absolute inset-0 bg-white/20 animate-shimmer"></div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -684,13 +1118,32 @@ const EvaluationModal = ({ evaluation, transcript, onClose }) => {
             
             {/* Evaluation Text */}
             {evalText && (
-              <div>
-                <h3 className="text-2xl font-bold mb-5 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
-                  Evaluation Details
-                </h3>
-                <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-6 border border-gray-700 shadow-xl">
-                  <div className="whitespace-pre-wrap text-gray-100 leading-relaxed text-base font-normal">
-                    {typeof evalText === 'string' ? evalText : JSON.stringify(evalText, null, 2)}
+              <div className="animate-fade-in" style={{ animationDelay: '300ms' }}>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-1 h-8 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full"></div>
+                  <h3 className="text-3xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-rose-400 bg-clip-text text-transparent">
+                    Evaluation Details
+                  </h3>
+                </div>
+                <div className="bg-gradient-to-br from-slate-800/90 via-slate-800/80 to-slate-900/90 rounded-2xl p-8 border border-slate-700/50 shadow-2xl backdrop-blur-sm relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-pink-500/5 pointer-events-none"></div>
+                  <div className="relative z-10">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center border border-purple-500/30 flex-shrink-0 shadow-lg">
+                        <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        {typeof evalText === 'string' && evalText.includes('|') ? (
+                          renderMarkdownContent(evalText)
+                        ) : (
+                          <div className="whitespace-pre-wrap text-gray-200 leading-relaxed text-base font-normal">
+                            {typeof evalText === 'string' ? evalText : JSON.stringify(evalText, null, 2)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -700,22 +1153,28 @@ const EvaluationModal = ({ evaluation, transcript, onClose }) => {
             {Object.keys(evaluation).filter(key => 
               !['evaluation', 'result', 'text', 'message', 'output', 'scores', 'score'].includes(key)
             ).length > 0 && (
-              <div>
-                <h3 className="text-2xl font-bold mb-5 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
-                  Additional Information
-                </h3>
-                <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-6 border border-gray-700 shadow-xl">
-                  <pre className="text-gray-100 text-sm overflow-x-auto font-mono">
-                    {JSON.stringify(
-                      Object.fromEntries(
-                        Object.entries(evaluation).filter(([key]) => 
-                          !['evaluation', 'result', 'text', 'message', 'output', 'scores', 'score'].includes(key)
-                        )
-                      ),
-                      null,
-                      2
-                    )}
-                  </pre>
+              <div className="animate-fade-in" style={{ animationDelay: '400ms' }}>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-1 h-8 bg-gradient-to-b from-cyan-500 to-blue-500 rounded-full"></div>
+                  <h3 className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
+                    Additional Information
+                  </h3>
+                </div>
+                <div className="bg-gradient-to-br from-slate-800/90 via-slate-800/80 to-slate-900/90 rounded-2xl p-8 border border-slate-700/50 shadow-2xl backdrop-blur-sm relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-blue-500/5 pointer-events-none"></div>
+                  <div className="relative z-10">
+                    <pre className="text-gray-200 text-sm overflow-x-auto font-mono leading-relaxed">
+                      {JSON.stringify(
+                        Object.fromEntries(
+                          Object.entries(evaluation).filter(([key]) => 
+                            !['evaluation', 'result', 'text', 'message', 'output', 'scores', 'score'].includes(key)
+                          )
+                        ),
+                        null,
+                        2
+                      )}
+                    </pre>
+                  </div>
                 </div>
               </div>
             )}
@@ -726,9 +1185,25 @@ const EvaluationModal = ({ evaluation, transcript, onClose }) => {
       // If it's just text content
       if (evalText) {
         return (
-          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-6 border border-gray-700 shadow-xl">
-            <div className="whitespace-pre-wrap text-gray-100 leading-relaxed text-base font-normal">
-              {typeof evalText === 'string' ? evalText : JSON.stringify(evalText, null, 2)}
+          <div className="bg-gradient-to-br from-slate-800/90 via-slate-800/80 to-slate-900/90 rounded-2xl p-8 border border-slate-700/50 shadow-2xl backdrop-blur-sm relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 pointer-events-none"></div>
+            <div className="relative z-10">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center border border-blue-500/30 flex-shrink-0 shadow-lg">
+                  <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  {typeof evalText === 'string' && evalText.includes('|') ? (
+                    renderMarkdownContent(evalText)
+                  ) : (
+                    <div className="whitespace-pre-wrap text-gray-200 leading-relaxed text-base font-normal">
+                      {typeof evalText === 'string' ? evalText : JSON.stringify(evalText, null, 2)}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         );
@@ -736,8 +1211,8 @@ const EvaluationModal = ({ evaluation, transcript, onClose }) => {
       
       // Fallback: show as JSON
       return (
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-6 border border-gray-700 shadow-xl">
-          <pre className="text-gray-100 text-sm overflow-x-auto font-mono">
+        <div className="bg-gradient-to-br from-slate-800/90 via-slate-800/80 to-slate-900/90 rounded-2xl p-8 border border-slate-700/50 shadow-2xl backdrop-blur-sm">
+          <pre className="text-gray-200 text-sm overflow-x-auto font-mono leading-relaxed">
             {JSON.stringify(evaluation, null, 2)}
           </pre>
         </div>
@@ -745,54 +1220,78 @@ const EvaluationModal = ({ evaluation, transcript, onClose }) => {
     }
 
     return (
-      <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-6 border border-gray-700 shadow-xl">
-        <div className="text-gray-300 text-center py-8">No evaluation data available.</div>
+      <div className="bg-gradient-to-br from-slate-800/90 via-slate-800/80 to-slate-900/90 rounded-2xl p-8 border border-slate-700/50 shadow-2xl backdrop-blur-sm">
+        <div className="text-gray-300 text-center py-12">
+          <svg className="w-16 h-16 mx-auto mb-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <p className="text-lg font-medium">No evaluation data available.</p>
+        </div>
       </div>
     );
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800 text-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-700">
+    <div 
+      className={`fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4 transition-opacity duration-300 ${
+        isVisible ? 'opacity-100' : 'opacity-0'
+      }`}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div 
+        className={`bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 text-white rounded-3xl max-w-6xl w-full max-h-[92vh] overflow-hidden flex flex-col shadow-2xl border border-slate-700/50 backdrop-blur-xl transition-all duration-300 ${
+          isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
+        }`}
+      >
         {/* Header */}
-        <div className="flex justify-between items-center p-6 border-b border-gray-700 bg-gradient-to-r from-gray-800 to-gray-900">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <div className="flex justify-between items-center p-6 border-b border-slate-700/50 bg-gradient-to-r from-slate-800/80 via-slate-800/60 to-slate-800/80 backdrop-blur-sm relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-pink-500/5 pointer-events-none"></div>
+          <div className="relative z-10 flex items-center gap-4 flex-1">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              Conversation Evaluation
-            </h2>
+            <div>
+              <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                Conversation Evaluation
+              </h2>
+              <p className="text-sm text-gray-400 mt-1">Your performance analysis</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="relative z-10 flex items-center gap-3">
             {/* Copy Button */}
             <button
               onClick={handleCopy}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg transition-all duration-200 border border-gray-600 hover:border-gray-500"
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all duration-200 border font-medium ${
+                copied 
+                  ? 'bg-green-500/20 border-green-400/50 text-green-400' 
+                  : 'bg-slate-800/80 hover:bg-slate-700/80 text-gray-300 hover:text-white border-slate-600/50 hover:border-slate-500/50'
+              } shadow-lg hover:shadow-xl hover:scale-105`}
               title="Copy evaluation results"
             >
               {copied ? (
                 <>
-                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  <span className="text-sm font-medium">Copied!</span>
+                  <span className="text-sm font-semibold">Copied!</span>
                 </>
               ) : (
                 <>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
-                  <span className="text-sm font-medium">Copy</span>
+                  <span className="text-sm font-semibold">Copy</span>
                 </>
               )}
             </button>
             {/* Close Button */}
             <button
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-all duration-200"
+              className="p-2.5 text-gray-400 hover:text-white hover:bg-slate-700/80 rounded-xl transition-all duration-200 border border-transparent hover:border-slate-600/50"
               title="Close"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -803,38 +1302,68 @@ const EvaluationModal = ({ evaluation, transcript, onClose }) => {
         </div>
         
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
           <div className="max-w-none">
             {renderEvaluationContent()}
           </div>
         </div>
         
         {/* Footer */}
-        <div className="p-6 border-t border-gray-700 bg-gradient-to-r from-gray-800 to-gray-900">
+        <div className="p-6 border-t border-slate-700/50 bg-gradient-to-r from-slate-800/80 via-slate-800/60 to-slate-800/80 backdrop-blur-sm">
           <button
             onClick={onClose}
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+            className="w-full bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-200 shadow-xl hover:shadow-2xl transform hover:scale-[1.02] active:scale-[0.98]"
           >
-            Close
+            Close Evaluation
           </button>
         </div>
       </div>
       
-      {/* Custom Scrollbar Styles */}
+      {/* Custom Styles */}
       <style>{`
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        @keyframes shimmer {
+          0% {
+            transform: translateX(-100%);
+          }
+          100% {
+            transform: translateX(100%);
+          }
+        }
+        
+        .animate-fade-in {
+          animation: fade-in 0.5s ease-out forwards;
+          opacity: 0;
+        }
+        
+        .animate-shimmer {
+          animation: shimmer 2s infinite;
+        }
+        
         .custom-scrollbar::-webkit-scrollbar {
-          width: 8px;
+          width: 10px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(31, 41, 55, 0.5);
-          border-radius: 4px;
+          background: rgba(15, 23, 42, 0.5);
+          border-radius: 5px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(107, 114, 128, 0.5);
-          border-radius: 4px;
+          background: linear-gradient(to bottom, rgba(59, 130, 246, 0.5), rgba(147, 51, 234, 0.5));
+          border-radius: 5px;
+          border: 2px solid rgba(15, 23, 42, 0.5);
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(107, 114, 128, 0.8);
+          background: linear-gradient(to bottom, rgba(59, 130, 246, 0.8), rgba(147, 51, 234, 0.8));
         }
       `}</style>
     </div>
