@@ -696,13 +696,9 @@ const EvaluationModal = ({ evaluation, transcript, onClose, onStartNew }) => {
 
   // Helper function to extract evaluation text for copying
   const getEvaluationText = () => {
-    if (typeof evaluation === 'string') {
-      return evaluation;
-    }
-
+    if (typeof evaluation === 'string') return evaluation;
     if (evaluation && typeof evaluation === 'object') {
       const evalText = evaluation.evaluation || evaluation.result || evaluation.text || evaluation.message || evaluation.output;
-      
       if (evaluation.scores || evaluation.score) {
         const scores = evaluation.scores || (evaluation.score ? { Overall: evaluation.score } : {});
         let text = 'Evaluation Scores:\n';
@@ -714,14 +710,8 @@ const EvaluationModal = ({ evaluation, transcript, onClose, onStartNew }) => {
         }
         return text;
       }
-      
-      if (evalText) {
-        return typeof evalText === 'string' ? evalText : JSON.stringify(evalText, null, 2);
-      }
-      
-      return JSON.stringify(evaluation, null, 2);
+      return evalText ? (typeof evalText === 'string' ? evalText : JSON.stringify(evalText, null, 2)) : JSON.stringify(evaluation, null, 2);
     }
-
     return 'No evaluation data available.';
   };
 
@@ -734,282 +724,224 @@ const EvaluationModal = ({ evaluation, transcript, onClose, onStartNew }) => {
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
-      // Fallback for older browsers
-      const textArea = document.createElement('textarea');
-      textArea.value = getEvaluationText();
-      textArea.style.position = 'fixed';
-      textArea.style.opacity = '0';
-      document.body.appendChild(textArea);
-      textArea.select();
       try {
+        const textArea = document.createElement('textarea');
+        textArea.value = getEvaluationText();
+        document.body.appendChild(textArea);
+        textArea.select();
         document.execCommand('copy');
+        document.body.removeChild(textArea);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       } catch (fallbackErr) {
         console.error('Fallback copy failed:', fallbackErr);
       }
-      document.body.removeChild(textArea);
     }
   };
 
-  // Helper function to get score icon
-  const getScoreIcon = (percentage) => {
-    if (percentage >= 80) {
-      return (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
-      );
-    } else if (percentage >= 60) {
-      return (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-        </svg>
-      );
-    } else {
-      return (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
-      );
-    }
-  };
+  // Render markdown content logic
+  const renderMarkdownContent = (text) => {
+    if (!text) return null;
+    const sections = text.split(/\n\n+/);
+    
+    return (
+      <div className="space-y-6 text-gray-300 leading-relaxed font-light">
+        {sections.map((section, idx) => {
+          const content = section.trim();
+          if (!content) return null;
 
-  // Helper function to render evaluation content
-  const renderEvaluationContent = () => {
-    if (typeof evaluation === 'string') {
-      return (
-        <div className="bg-gradient-to-br from-slate-800/90 via-slate-800/80 to-slate-900/90 rounded-2xl p-8 border border-slate-700/50 shadow-2xl backdrop-blur-sm relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 pointer-events-none"></div>
-          <div className="relative z-10">
-            <div className="flex items-start gap-4 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center border border-blue-500/30">
-                <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
+          // Headings
+          if (content.match(/^#{1,6}\s+/)) {
+            const level = content.match(/^(#{1,6})/)[1].length;
+            const headingText = content.replace(/^#{1,6}\s+/, '');
+            
+            const sizes = {
+              1: "text-2xl font-semibold text-white mt-6 mb-4",
+              2: "text-xl font-medium text-white/90 mt-5 mb-3",
+              3: "text-lg font-medium text-white/80 mt-4 mb-2",
+            };
+            
+            return (
+              <div key={idx} className={sizes[level] || sizes[3]}>
+                {headingText}
               </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-white mb-2">Evaluation Summary</h3>
-                <div className="whitespace-pre-wrap text-gray-200 leading-relaxed text-base font-normal">
-                  {evaluation}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    if (evaluation && typeof evaluation === 'object') {
-      // Check for common evaluation result structures
-      const evalText = evaluation.evaluation || evaluation.result || evaluation.text || evaluation.message || evaluation.output;
-      
-      // If there are scores, display them nicely
-      if (evaluation.scores || evaluation.score) {
-        const scores = evaluation.scores || (evaluation.score ? { Overall: evaluation.score } : {});
-        const scoreEntries = Object.entries(scores);
-        const overallScore = scoreEntries.length > 0 ? (typeof scoreEntries[0][1] === 'number' ? scoreEntries[0][1] : parseFloat(scoreEntries[0][1])) : null;
-        
-        return (
-          <div className="space-y-8 animate-fade-in">
-            {/* Overall Score Banner */}
-            {overallScore !== null && (
-              <div className="bg-gradient-to-r from-blue-600/20 via-purple-600/20 to-pink-600/20 rounded-2xl p-6 border border-blue-500/30 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 animate-pulse"></div>
-                <div className="relative z-10 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-1">Overall Performance</p>
-                    <p className="text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                      {(overallScore * 100).toFixed(1)}%
-                    </p>
-                  </div>
-                  <div className={`w-20 h-20 rounded-full flex items-center justify-center ${
-                    overallScore >= 0.8 ? 'bg-green-500/20 border-4 border-green-400' :
-                    overallScore >= 0.6 ? 'bg-yellow-500/20 border-4 border-yellow-400' :
-                    'bg-red-500/20 border-4 border-red-400'
-                  }`}>
-                    {getScoreIcon(overallScore * 100)}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Scores Section */}
-            <div>
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-1 h-8 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full"></div>
-                <h3 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                  Detailed Scores
-                </h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {scoreEntries.map(([key, value], index) => {
-                  const numValue = typeof value === 'number' ? value : parseFloat(value);
-                  const percentage = numValue * 100;
-                  const isExcellent = percentage >= 80;
-                  const isGood = percentage >= 70;
-                  const isAverage = percentage >= 50 && percentage < 70;
-                  
-                  const colorClasses = isExcellent 
-                    ? 'from-emerald-500/20 to-green-500/20 border-emerald-400/40 text-emerald-400'
-                    : isGood 
-                    ? 'from-blue-500/20 to-cyan-500/20 border-blue-400/40 text-blue-400'
-                    : isAverage
-                    ? 'from-yellow-500/20 to-orange-500/20 border-yellow-400/40 text-yellow-400'
-                    : 'from-red-500/20 to-pink-500/20 border-red-400/40 text-red-400';
-                  
-                  const progressColor = isExcellent
-                    ? 'from-emerald-500 to-green-400'
-                    : isGood
-                    ? 'from-blue-500 to-cyan-400'
-                    : isAverage
-                    ? 'from-yellow-500 to-orange-400'
-                    : 'from-red-500 to-pink-400';
-                  
+            );
+          }
+          
+          // Lists
+          if (content.match(/^(\d+\.|-|\*)\s+/)) {
+            const listItems = content.split(/\n(?=(\d+\.|-|\*)\s+)/);
+            return (
+              <ul key={idx} className="space-y-3 my-4 ml-4">
+                {listItems.map((item, i) => {
+                  const itemText = item.replace(/^(\d+\.|-|\*)\s+/, '').trim();
+                  // Basic bold parsing
+                  const parts = itemText.split(/(\*\*.*?\*\*)/g);
                   return (
-                    <div 
-                      key={key}
-                      className={`bg-gradient-to-br ${colorClasses} rounded-2xl p-6 border-2 shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 hover:-translate-y-1 relative overflow-hidden group`}
-                      style={{ animationDelay: `${index * 100}ms` }}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                      <div className="relative z-10">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-                            {key}
-                          </div>
-                          {getScoreIcon(percentage)}
-                        </div>
-                        <div className={`text-4xl font-bold mb-4 ${colorClasses.split(' ')[2]}`}>
-                          {typeof value === 'number' ? `${percentage.toFixed(1)}%` : value}
-                        </div>
-                        {typeof value === 'number' && (
-                          <div className="relative w-full bg-gray-800/50 rounded-full h-3 overflow-hidden backdrop-blur-sm">
-                            <div 
-                              className={`h-full rounded-full bg-gradient-to-r ${progressColor} transition-all duration-1000 ease-out shadow-lg`}
-                              style={{ width: `${Math.min(percentage, 100)}%` }}
-                            >
-                              <div className="absolute inset-0 bg-white/20 animate-shimmer"></div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <li key={i} className="flex items-start gap-3">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2.5 flex-shrink-0" />
+                      <span>
+                        {parts.map((part, p) => (
+                           part.startsWith('**') && part.endsWith('**') 
+                            ? <strong key={p} className="text-white font-medium">{part.slice(2, -2)}</strong> 
+                            : part
+                        ))}
+                      </span>
+                    </li>
                   );
                 })}
-              </div>
-            </div>
-            
-            {/* Evaluation Text */}
-            {evalText && (
-              <div className="animate-fade-in" style={{ animationDelay: '300ms' }}>
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-1 h-8 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full"></div>
-                  <h3 className="text-3xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-rose-400 bg-clip-text text-transparent">
-                    Evaluation Details
-                  </h3>
-                </div>
-                <div className="bg-gradient-to-br from-slate-800/90 via-slate-800/80 to-slate-900/90 rounded-2xl p-8 border border-slate-700/50 shadow-2xl backdrop-blur-sm relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-pink-500/5 pointer-events-none"></div>
-                  <div className="relative z-10">
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center border border-purple-500/30 flex-shrink-0">
-                        <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <div className="whitespace-pre-wrap text-gray-200 leading-relaxed text-base font-normal">
-                          {typeof evalText === 'string' ? evalText : JSON.stringify(evalText, null, 2)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* Other fields */}
-            {Object.keys(evaluation).filter(key => 
-              !['evaluation', 'result', 'text', 'message', 'output', 'scores', 'score'].includes(key)
-            ).length > 0 && (
-              <div className="animate-fade-in" style={{ animationDelay: '400ms' }}>
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-1 h-8 bg-gradient-to-b from-cyan-500 to-blue-500 rounded-full"></div>
-                  <h3 className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-                    Additional Information
-                  </h3>
-                </div>
-                <div className="bg-gradient-to-br from-slate-800/90 via-slate-800/80 to-slate-900/90 rounded-2xl p-8 border border-slate-700/50 shadow-2xl backdrop-blur-sm relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-blue-500/5 pointer-events-none"></div>
-                  <div className="relative z-10">
-                    <pre className="text-gray-200 text-sm overflow-x-auto font-mono leading-relaxed">
-                      {JSON.stringify(
-                        Object.fromEntries(
-                          Object.entries(evaluation).filter(([key]) => 
-                            !['evaluation', 'result', 'text', 'message', 'output', 'scores', 'score'].includes(key)
-                          )
-                        ),
-                        null,
-                        2
-                      )}
-                    </pre>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      }
-      
-      // If it's just text content
-      if (evalText) {
-        return (
-          <div className="bg-gradient-to-br from-slate-800/90 via-slate-800/80 to-slate-900/90 rounded-2xl p-8 border border-slate-700/50 shadow-2xl backdrop-blur-sm relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 pointer-events-none"></div>
-            <div className="relative z-10">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center border border-blue-500/30 flex-shrink-0">
-                  <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <div className="whitespace-pre-wrap text-gray-200 leading-relaxed text-base font-normal">
-                    {typeof evalText === 'string' ? evalText : JSON.stringify(evalText, null, 2)}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      }
-      
-      // Fallback: show as JSON
-      return (
-        <div className="bg-gradient-to-br from-slate-800/90 via-slate-800/80 to-slate-900/90 rounded-2xl p-8 border border-slate-700/50 shadow-2xl backdrop-blur-sm">
-          <pre className="text-gray-200 text-sm overflow-x-auto font-mono leading-relaxed">
-            {JSON.stringify(evaluation, null, 2)}
-          </pre>
-        </div>
-      );
+              </ul>
+            );
+          }
+
+          // Tables
+          if (content.includes('|') && content.split('\n').some(l => l.includes('|'))) {
+             const rows = content.split('\n').filter(l => l.includes('|') && !l.match(/^\s*\|[-:]+\|\s*$/));
+             const headers = rows[0]?.split('|').slice(1, -1).map(h => h.trim());
+             const data = rows.slice(2).map(r => r.split('|').slice(1, -1).map(c => c.trim()));
+             
+             return (
+               <div key={idx} className="overflow-x-auto my-6 rounded-xl border border-white/10 bg-white/5">
+                 <table className="w-full text-sm">
+                   <thead>
+                     <tr className="bg-white/5 border-b border-white/10">
+                       {headers?.map((h, hIdx) => (
+                         <th key={hIdx} className="px-6 py-4 text-left font-medium text-gray-200">{h.replace(/\*\*/g, '')}</th>
+                       ))}
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-white/5">
+                     {data.map((row, rIdx) => (
+                       <tr key={rIdx} className="hover:bg-white/5 transition-colors">
+                         {row.map((cell, cIdx) => (
+                           <td key={cIdx} className="px-6 py-4 text-gray-400">
+                             {cell.replace(/\*\*(.*?)\*\*/g, '$1')}
+                           </td>
+                         ))}
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
+             );
+          }
+
+          // Paragraphs
+          return (
+            <p key={idx} className="mb-4">
+              {content.split(/(\*\*.*?\*\*)/g).map((part, p) => (
+                 part.startsWith('**') && part.endsWith('**') 
+                  ? <strong key={p} className="text-white font-medium">{part.slice(2, -2)}</strong> 
+                  : part
+              ))}
+            </p>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Score Component
+  const ScoreCard = ({ label, value }) => {
+    const percentage = typeof value === 'number' ? value * 100 : parseFloat(value);
+    const score = Math.min(100, Math.max(0, percentage));
+    
+    let color = "text-emerald-400";
+    let bg = "bg-emerald-500/20";
+    let border = "border-emerald-500/30";
+    
+    if (score < 60) {
+      color = "text-rose-400";
+      bg = "bg-rose-500/20";
+      border = "border-rose-500/30";
+    } else if (score < 80) {
+      color = "text-amber-400";
+      bg = "bg-amber-500/20";
+      border = "border-amber-500/30";
     }
 
     return (
-      <div className="bg-gradient-to-br from-slate-800/90 via-slate-800/80 to-slate-900/90 rounded-2xl p-8 border border-slate-700/50 shadow-2xl backdrop-blur-sm">
-        <div className="text-gray-300 text-center py-12">
-          <svg className="w-16 h-16 mx-auto mb-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <p className="text-lg font-medium">No evaluation data available.</p>
+      <div className={`p-5 rounded-2xl bg-slate-800/50 border ${border} backdrop-blur-sm flex flex-col items-center justify-center gap-2 group hover:scale-[1.02] transition-transform duration-300`}>
+        <div className="relative w-20 h-20 flex items-center justify-center">
+           <svg className="w-full h-full transform -rotate-90">
+             <circle cx="40" cy="40" r="36" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-gray-700" />
+             <circle cx="40" cy="40" r="36" stroke="currentColor" strokeWidth="6" fill="transparent" 
+               className={color}
+               strokeDasharray={`${2 * Math.PI * 36}`}
+               strokeDashoffset={`${2 * Math.PI * 36 * (1 - score / 100)}`}
+               strokeLinecap="round"
+             />
+           </svg>
+           <span className={`absolute text-xl font-bold ${color}`}>{score.toFixed(0)}%</span>
         </div>
+        <span className="text-sm font-medium text-gray-300 text-center mt-2">{label}</span>
+      </div>
+    );
+  };
+
+  const renderContent = () => {
+    if (!evaluation) return (
+      <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+        <p>No evaluation data available.</p>
+      </div>
+    );
+
+    if (typeof evaluation === 'string') {
+      return (
+        <div className="bg-slate-800/30 rounded-2xl p-8 border border-white/10">
+          {renderMarkdownContent(evaluation)}
+        </div>
+      );
+    }
+
+    const scores = evaluation.scores || (evaluation.score ? { Overall: evaluation.score } : null);
+    const evalText = evaluation.evaluation || evaluation.result || evaluation.text || evaluation.message || evaluation.output || evaluation.details;
+    const additionalInfo = Object.fromEntries(
+      Object.entries(evaluation).filter(([key]) => 
+        !['evaluation', 'result', 'text', 'message', 'output', 'scores', 'score', 'details'].includes(key)
+      )
+    );
+
+    return (
+      <div className="space-y-8">
+        {/* Scores Grid */}
+        {scores && (
+           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+             {Object.entries(scores).map(([k, v]) => (
+               <ScoreCard key={k} label={k} value={v} />
+             ))}
+           </div>
+        )}
+
+        {/* Main Feedback */}
+        {evalText && (
+          <div className="bg-slate-800/30 rounded-3xl p-8 border border-white/10 shadow-inner">
+            <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-3">
+              <span className="w-1 h-6 bg-blue-500 rounded-full"/>
+              Analysis Details
+            </h3>
+            {typeof evalText === 'string' ? renderMarkdownContent(evalText) : (
+              <pre className="whitespace-pre-wrap text-gray-300 font-sans">{JSON.stringify(evalText, null, 2)}</pre>
+            )}
+          </div>
+        )}
+        
+        {/* JSON Dump for unmatched fields */}
+        {Object.keys(additionalInfo).length > 0 && (
+          <div className="bg-slate-900/50 rounded-2xl p-6 border border-white/5">
+             <h4 className="text-sm font-medium text-gray-500 mb-4 uppercase tracking-wider">Additional Data</h4>
+             <pre className="text-xs text-gray-400 font-mono overflow-auto custom-scrollbar p-2">
+               {JSON.stringify(additionalInfo, null, 2)}
+             </pre>
+          </div>
+        )}
       </div>
     );
   };
 
   return (
     <div 
-      className={`fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4 transition-opacity duration-300 ${
+      className={`fixed inset-0 bg-[#000]/80 backdrop-blur-md flex items-center justify-center z-50 p-4 sm:p-6 transition-all duration-300 ${
         isVisible ? 'opacity-100' : 'opacity-0'
       }`}
       onClick={(e) => {
@@ -1017,141 +949,80 @@ const EvaluationModal = ({ evaluation, transcript, onClose, onStartNew }) => {
       }}
     >
       <div 
-        className={`bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 text-white rounded-3xl max-w-6xl w-full max-h-[92vh] overflow-hidden flex flex-col shadow-2xl border border-slate-700/50 backdrop-blur-xl transition-all duration-300 ${
-          isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
+        className={`bg-[#0F1117] w-full max-w-5xl max-h-[90vh] rounded-[2rem] shadow-2xl overflow-hidden flex flex-col border border-white/10 transition-all duration-500 ${
+           isVisible ? 'translate-y-0 scale-100' : 'translate-y-8 scale-95'
         }`}
       >
         {/* Header */}
-        <div className="flex justify-between items-center p-6 border-b border-slate-700/50 bg-gradient-to-r from-slate-800/80 via-slate-800/60 to-slate-800/80 backdrop-blur-sm relative">
-          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-pink-500/5 pointer-events-none"></div>
-          <div className="relative z-10 flex items-center gap-4 flex-1">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
-              <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <div className="flex-none px-8 py-6 border-b border-white/5 flex items-center justify-between bg-[#151921]">
+          <div className="flex items-center gap-5">
+            <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-900/20 flex-shrink-0" style={{ width: '3.5rem', height: '3.5rem' }}>
+              <svg className="w-8 h-8 text-white" width="32" height="32" style={{ width: '2rem', height: '2rem' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
               </svg>
             </div>
             <div>
-              <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                Conversation Evaluation
-              </h2>
-              <p className="text-sm text-gray-400 mt-1">Your performance analysis</p>
+              <h2 className="text-2xl font-bold text-white tracking-tight">Conversation Evaluation</h2>
+              <p className="text-gray-400 text-sm mt-0.5">Your performance analysis</p>
             </div>
           </div>
-          <div className="relative z-10 flex items-center gap-3">
-            {/* Copy Button */}
-            <button
+          
+          <div className="flex items-center gap-3">
+            <button 
               onClick={handleCopy}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all duration-200 border font-medium ${
-                copied 
-                  ? 'bg-green-500/20 border-green-400/50 text-green-400' 
-                  : 'bg-slate-800/80 hover:bg-slate-700/80 text-gray-300 hover:text-white border-slate-600/50 hover:border-slate-500/50'
-              } shadow-lg hover:shadow-xl hover:scale-105`}
-              title="Copy evaluation results"
+              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-sm font-medium text-gray-300 transition-all active:scale-95 flex items-center gap-2 group"
             >
               {copied ? (
                 <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span className="text-sm font-semibold">Copied!</span>
+                  <svg className="w-4 h-4 text-emerald-400" width="16" height="16" style={{ width: '1rem', height: '1rem' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
+                  <span className="text-emerald-400">Copied</span>
                 </>
               ) : (
                 <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  <span className="text-sm font-semibold">Copy</span>
+                  <svg className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" width="16" height="16" style={{ width: '1rem', height: '1rem' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  <span>Copy Result</span>
                 </>
               )}
             </button>
-            {/* Close Button */}
-            <button
+            <button 
               onClick={onClose}
-              className="p-2.5 text-gray-400 hover:text-white hover:bg-slate-700/80 rounded-xl transition-all duration-200 border border-transparent hover:border-slate-600/50"
-              title="Close"
+              className="w-10 h-10 rounded-xl bg-white/5 hover:bg-red-500/10 hover:text-red-400 border border-white/5 flex items-center justify-center text-gray-400 transition-all active:scale-95"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <svg className="w-5 h-5" width="20" height="20" style={{ width: '1.25rem', height: '1.25rem' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
         </div>
-        
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-          <div className="max-w-none">
-            {renderEvaluationContent()}
-          </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-[#0B0D12]">
+          {renderContent()}
         </div>
-        
-        {/* Footer */}
-        <div className="p-6 border-t border-slate-700/50 bg-gradient-to-r from-slate-800/80 via-slate-800/60 to-slate-800/80 backdrop-blur-sm flex gap-4">
+
+        {/* Footer Actions */}
+        <div className="flex-none p-6 border-t border-white/5 bg-[#151921] flex justify-end gap-4">
+          <button
+            onClick={onClose}
+            className="px-6 py-3 rounded-xl text-gray-300 font-medium hover:bg-white/5 transition-colors"
+          >
+            Close
+          </button>
           {onStartNew && (
             <button
               onClick={onStartNew}
-              className="flex-1 bg-gradient-to-r from-green-600 via-emerald-600 to-teal-600 hover:from-green-700 hover:via-emerald-700 hover:to-teal-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-200 shadow-xl hover:shadow-2xl transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+              className="px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-900/20 active:scale-95 transition-all flex items-center gap-2"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-              </svg>
+              <svg className="w-5 h-5" width="20" height="20" style={{ width: '1.25rem', height: '1.25rem' }} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
               Start New Session
             </button>
           )}
-          <button
-            onClick={onClose}
-            className={`${onStartNew ? 'flex-1' : 'w-full'} bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-200 shadow-xl hover:shadow-2xl transform hover:scale-[1.02] active:scale-[0.98]`}
-          >
-            {onStartNew ? 'Close' : 'Close Evaluation'}
-          </button>
         </div>
       </div>
       
-      {/* Custom Styles */}
-      <style>{`
-        @keyframes fade-in {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        @keyframes shimmer {
-          0% {
-            transform: translateX(-100%);
-          }
-          100% {
-            transform: translateX(100%);
-          }
-        }
-        
-        .animate-fade-in {
-          animation: fade-in 0.5s ease-out forwards;
-          opacity: 0;
-        }
-        
-        .animate-shimmer {
-          animation: shimmer 2s infinite;
-        }
-        
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(15, 23, 42, 0.5);
-          border-radius: 5px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: linear-gradient(to bottom, rgba(59, 130, 246, 0.5), rgba(147, 51, 234, 0.5));
-          border-radius: 5px;
-          border: 2px solid rgba(15, 23, 42, 0.5);
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(to bottom, rgba(59, 130, 246, 0.8), rgba(147, 51, 234, 0.8));
-        }
+       <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #374151; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #4B5563; }
       `}</style>
     </div>
   );
